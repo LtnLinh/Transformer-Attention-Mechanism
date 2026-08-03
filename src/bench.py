@@ -195,6 +195,79 @@ def sdpa_kernel_ms(model, n, reps=5):
     return start.elapsed_time(end) / reps
 
 
+def attention_flops(model, n):
+    """FLOP count of one [N, D] attention, from torch's own flop_counter
+    (torch.utils.flop_counter) — the per-matmul formula is torch's, not a
+    hand-rolled 4*N^2*D. Counts the two matmuls the kernels actually do:
+    scores = Q @ K^T and out = weights @ V, each 2*N^2*D FLOPs. The softmax's
+    elementwise ops are not FLOP-counted (standard roofline convention). The
+    math is identical for V1/V2/V3, so one count serves every version.
+
+    Runs on CPU — counting is analytic, it just needs the ops to dispatch."""
+    from torch.utils.flop_counter import FlopCounterMode
+    d = model.embedding.embedding_dim
+    q = torch.zeros(1, n, d)
+    with torch.no_grad(), FlopCounterMode(display=False) as fc:
+        w = torch.bmm(q, q.transpose(-1, -2))  # Q @ K^T  -> [1, N, N]
+        torch.bmm(w.softmax(-1), q)            # weights @ V -> [1, N, D]
+    return fc.get_total_flops()
+
+
+def attention_bytes(model, n):
+    """Compulsory DRAM traffic (bytes) of one [N, D] attention: read Q, K, V
+    and write the output, each element touched once. Byte width comes from the
+    tensor (element_size), not a magic constant. This is the roofline's
+    lower-bound traffic; real kernels move more — V1 re-reads its operands per
+    output element, V2/V3 far less.
+    ponytail: compulsory-traffic model, so V1/V2/V3 share one x-position and
+    differ only in how close to the ceiling they land. For *measured* DRAM
+    bytes that expose the reuse gap directly, profile with Nsight Compute:
+      ncu --metrics dram__bytes.sum --launch-skip <warmup> --launch-count <k> \
+          --csv python driver.py     (needs GPU perf-counter permission)."""
+    probe = torch.empty(n, model.embedding.embedding_dim)
+    return 4 * probe.numel() * probe.element_size()  # Q, K, V in + out out
+
+
+def roofline(model, seq_lens, kernel_ms, specs=None):
+    """Operating points for a roofline: achieved TFLOP/s and arithmetic
+    intensity (FLOP/byte) per version per N, from library FLOPs / bytes and
+    the already-measured kernel-only times. `kernel_ms` is the ktimes dict
+    (version -> [ms per n]). Also returns achieved GB/s and % of peak."""
+    specs = specs or gpu_specs()
+    pts = {}
+    for name, ms_list in kernel_ms.items():
+        rows = []
+        for n, ms in zip(seq_lens, ms_list):
+            f, b, t = attention_flops(model, n), attention_bytes(model, n), ms / 1e3
+            tflops = f / t / 1e12
+            rows.append({"n": n, "ai": f / b, "tflops": tflops, "gbs": b / t / 1e9,
+                         "pct_peak": 100.0 * tflops / specs["tflops"]})
+        pts[name] = rows
+    return pts, specs
+
+
+def plot_roofline(pts, specs, ax=None):
+    """Log-log roofline: compute ceiling (flat) + bandwidth ceiling (slanted),
+    with each version's (intensity, TFLOP/s) points on top."""
+    import matplotlib.pyplot as plt
+    ax = ax or plt.gca()
+    peak_tf, bw_tb = specs["tflops"], specs["bw_gbs"] / 1e3  # TB/s == TFLOP per FLOP/byte
+    xs = [x for rows in pts.values() for r in rows for x in [r["ai"]]] or [1.0]
+    lo, hi = min(xs) / 4, max(xs) * 4
+    ridge = peak_tf / bw_tb  # FLOP/byte where the two ceilings meet
+    x_bw = [lo, ridge]
+    ax.plot(x_bw, [bw_tb * x for x in x_bw], "k-", lw=1.5)          # BW roof
+    ax.plot([ridge, hi], [peak_tf, peak_tf], "k-", lw=1.5,
+            label=f"peak {peak_tf:.0f} TF/s, {specs['bw_gbs']:.0f} GB/s")
+    for name, rows in pts.items():
+        ax.plot([r["ai"] for r in rows], [r["tflops"] for r in rows], "o-", label=name)
+    ax.set(xscale="log", yscale="log", xlabel="arithmetic intensity (FLOP/byte)",
+           ylabel="achieved TFLOP/s", title=f"Roofline — {specs['name']}")
+    ax.legend(fontsize=8)
+    ax.grid(True, which="both", ls=":", alpha=0.4)
+    return ax
+
+
 def bench_attention(classes, seq_lens, reps=5):
     """Attention-step time for each pipeline class at each sequence length."""
     times = {name: [] for name in classes}
