@@ -246,28 +246,6 @@ def roofline(model, seq_lens, kernel_ms, specs=None):
     return pts, specs
 
 
-def plot_roofline(pts, specs, ax=None):
-    """Log-log roofline: compute ceiling (flat) + bandwidth ceiling (slanted),
-    with each version's (intensity, TFLOP/s) points on top."""
-    import matplotlib.pyplot as plt
-    ax = ax or plt.gca()
-    peak_tf, bw_tb = specs["tflops"], specs["bw_gbs"] / 1e3  # TB/s == TFLOP per FLOP/byte
-    xs = [x for rows in pts.values() for r in rows for x in [r["ai"]]] or [1.0]
-    lo, hi = min(xs) / 4, max(xs) * 4
-    ridge = peak_tf / bw_tb  # FLOP/byte where the two ceilings meet
-    x_bw = [lo, ridge]
-    ax.plot(x_bw, [bw_tb * x for x in x_bw], "k-", lw=1.5)          # BW roof
-    ax.plot([ridge, hi], [peak_tf, peak_tf], "k-", lw=1.5,
-            label=f"peak {peak_tf:.0f} TF/s, {specs['bw_gbs']:.0f} GB/s")
-    for name, rows in pts.items():
-        ax.plot([r["ai"] for r in rows], [r["tflops"] for r in rows], "o-", label=name)
-    ax.set(xscale="log", yscale="log", xlabel="arithmetic intensity (FLOP/byte)",
-           ylabel="achieved TFLOP/s", title=f"Roofline — {specs['name']}")
-    ax.legend(fontsize=8)
-    ax.grid(True, which="both", ls=":", alpha=0.4)
-    return ax
-
-
 def bench_attention(classes, seq_lens, reps=5):
     """Attention-step time for each pipeline class at each sequence length."""
     times = {name: [] for name in classes}
