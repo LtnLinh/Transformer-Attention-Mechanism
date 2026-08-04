@@ -220,10 +220,9 @@ def attention_bytes(model, n):
     lower-bound traffic; real kernels move more — V1 re-reads its operands per
     output element, V2/V3 far less.
     ponytail: compulsory-traffic model, so V1/V2/V3 share one x-position and
-    differ only in how close to the ceiling they land. For *measured* DRAM
-    bytes that expose the reuse gap directly, profile with Nsight Compute:
-      ncu --metrics dram__bytes.sum --launch-skip <warmup> --launch-count <k> \
-          --csv python driver.py     (needs GPU perf-counter permission)."""
+    differ only in how close to the ceiling they land. Measured DRAM bytes —
+    which expose the reuse gap directly — come from src/dram_profile.py
+    (Nsight Compute dram__bytes.sum; root-gated counters)."""
     probe = torch.empty(n, model.embedding.embedding_dim)
     return 4 * probe.numel() * probe.element_size()  # Q, K, V in + out out
 
