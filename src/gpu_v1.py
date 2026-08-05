@@ -1,27 +1,9 @@
 import math
 
-import numpy as np
+import torch
 from numba import cuda, float32
 
 from gpu_base import GpuPipeline
-
-
-@cuda.jit
-def _matmul(a, b, scale, out):
-    """out = scale * (a @ b) — one thread per output element, all reads from
-    global memory. The scale rides the epilogue for free: a separate scaling
-    launch would re-read and re-write the whole output matrix.
-
-    threadIdx.x walks the output column (the contiguous axis) so warp reads
-    of b are coalesced; a[i, kk] is a broadcast within the warp.
-    """
-    j, i = cuda.grid(2)
-    if i < out.shape[0] and j < out.shape[1]:
-        acc = float32(0.)
-        for kk in range(a.shape[1]):
-            acc += a[i, kk] * b[kk, j]
-        out[i, j] = acc * scale
-
 
 TPB = 256  # threads cooperating on one row
 
@@ -32,7 +14,7 @@ def _softmax(x, out):
 
     Each thread strides over its slice of the row; the block reduces the
     per-thread max and sum in shared memory. Still three reads of the row
-    (naive), but the row is now processed cooperatively instead of by a
+    (naive), but the row is processed cooperatively instead of by a
     single thread.
     """
     row = cuda.blockIdx.x
@@ -42,9 +24,8 @@ def _softmax(x, out):
     sm = cuda.shared.array(TPB, float32)
     sd = cuda.shared.array(TPB, float32)
 
-    # row max for numerical stability (avoid exp overflow)
-    m = x[row, tid] if tid < n else float32(-3.0e38)
-    for j in range(tid + TPB, n, TPB):
+    m = float32(-3.0e38)
+    for j in range(tid, n, TPB):
         if x[row, j] > m:
             m = x[row, j]
     sm[tid] = m
@@ -76,29 +57,23 @@ def _softmax(x, out):
         out[row, j] = math.exp(x[row, j] - m) / denom
 
 
-def _grid2d(rows, cols, tpb=(16, 16)):
-    # grid x covers columns, grid y covers rows (matches j, i = cuda.grid(2))
-    return (math.ceil(cols / tpb[0]), math.ceil(rows / tpb[1])), tpb
-
-
 class GpuV1(GpuPipeline):
-    """V1 — naive three-launch attention: scaled QK^T matmul, softmax,
-    weighted sum.
+    """V1 — cuBLAS matmuls + a naive three-pass softmax kernel.
 
-    Every intermediate, including the full N x N score matrix, round-trips
-    through global memory between kernels, and the softmax reads each row
-    three times.
+    The two matmuls dispatch to the library (torch.mm -> cuBLAS SGEMM), with
+    the 1/sqrt(D) scale folded into the cheap O(N D) operand rather than a
+    pass over the N x N output. What remains hand-written is the softmax,
+    which still reads its row three times (max, sum, write). Every
+    intermediate, including the full N x N score matrix, still round-trips
+    through global memory between launches.
     """
 
     def _step_qkt(self, q, k, scores):
-        N, D = q.shape
-        bpg, tpb = _grid2d(N, N)
-        # np.float32 keeps the kernel arithmetic in fp32 (a python float is typed float64)
-        _matmul[bpg, tpb](q, k.t().contiguous(), np.float32(D ** -0.5), scores)
+        D = q.shape[1]
+        torch.mm(q * D ** -0.5, k.t(), out=scores)
 
     def _step_softmax(self, scores, weights):
         _softmax[scores.shape[0], TPB](scores, weights)
 
     def _step_weighted_sum(self, weights, v, out):
-        bpg, tpb = _grid2d(*out.shape)
-        _matmul[bpg, tpb](weights, v, np.float32(1.0), out)
+        torch.mm(weights, v, out=out)
