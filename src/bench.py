@@ -57,8 +57,7 @@ def step_percentages(model, n, warmup=True, steps=STEPS):
 def attention_step_ms(model, n):
     """Absolute ms of each attention sub-step, from one profiled pass over
     the record_function labels inside the model's attention. One pass, no
-    warmup — meant for the pure-Python CPU model, where a pass costs minutes
-    and there is nothing to warm up. Assumes batch=1 (what _qkv provides):
+    warmup — callers warm vectorized models once beforehand. Assumes batch=1 (what _qkv provides):
     key_averages sums duplicate labels, so batch>1 would fold all sequences
     into one number."""
     q, k, v = _qkv(model, n)

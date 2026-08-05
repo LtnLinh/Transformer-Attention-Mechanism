@@ -33,7 +33,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SEQ_LENS = [2 ** x for x in range(6, 12)]
+SEQ_LENS = [2 ** x for x in range(6, 15)]
 VERSIONS = ("v1", "v2", "v3", "sdpa")
 METRICS = ",".join([
     "dram__bytes.sum",
