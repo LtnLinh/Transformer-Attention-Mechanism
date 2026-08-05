@@ -5,12 +5,14 @@ from abstract import TransformerBase
 
 
 class CpuPipeline(TransformerBase):
-    """CPU pipeline: attention as three vectorized torch ops (MKL).
-
-    Puts every stage on the same vectorized (BLAS) footing, so a profile of
-    the forward pass reflects each step's algorithmic cost rather than
-    interpreter overhead. Kept unfused (matmul, softmax, matmul) so the three
-    attention sub-steps stay separately attributable in the profiler.
+    """CPU pipeline: attention as three torch ops, made sequential by
+    configuration rather than by hand-written loops — the notebook pins one
+    thread (torch.set_num_threads(1)) and caps dispatch at the baseline ISA
+    (ATEN_CPU_CAPABILITY=default, MKL_ENABLE_INSTRUCTIONS=SSE2, set before
+    torch loads). Library code, sequential execution: profiles reflect each
+    step's algorithmic cost with no interpreter overhead and no parallelism.
+    Kept unfused (matmul, softmax, matmul) so the three attention sub-steps
+    stay separately attributable in the profiler.
     """
 
     def attention(self, q, k, v):
