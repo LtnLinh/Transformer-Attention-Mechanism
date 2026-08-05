@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 SEQ_LENS = [2 ** x for x in range(6, 15)]
-VERSIONS = ("v1", "v2", "v3", "sdpa")
+VERSIONS = ("v1", "v2", "v1n", "v2n", "v3", "sdpa")
 METRICS = ",".join([
     "dram__bytes.sum",
     "gpu__time_duration.sum",
@@ -57,10 +57,13 @@ def run(version, n):
 
     import bench
     from gpu_v1 import GpuV1
+    from gpu_v1_numba import GpuV1Numba
     from gpu_v2 import GpuV2
+    from gpu_v2_numba import GpuV2Numba
     from gpu_v3 import GpuV3
 
-    model = {"v1": GpuV1, "v2": GpuV2, "v3": GpuV3, "sdpa": GpuV1}[version]()
+    model = {"v1": GpuV1, "v2": GpuV2, "v1n": GpuV1Numba, "v2n": GpuV2Numba,
+             "v3": GpuV3, "sdpa": GpuV1}[version]()
     q, k, v = (t[0].detach().contiguous().cuda() for t in bench._qkv(model, n))
 
     def one_pass():

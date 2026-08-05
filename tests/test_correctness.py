@@ -5,7 +5,9 @@ from numba import cuda
 from bench import sdpa_reference
 from cpu_baseline import CpuPipeline
 from gpu_v1 import GpuV1
+from gpu_v1_numba import GpuV1Numba
 from gpu_v2 import GpuV2
+from gpu_v2_numba import GpuV2Numba
 from gpu_v3 import GpuV3
 
 needs_gpu = pytest.mark.skipif(not cuda.is_available(), reason="no CUDA device")
@@ -25,6 +27,6 @@ def test_cpu_matches_torch_sdpa():
 
 
 @needs_gpu
-@pytest.mark.parametrize("cls", [GpuV1, GpuV2, GpuV3])
+@pytest.mark.parametrize("cls", [GpuV1, GpuV2, GpuV1Numba, GpuV2Numba, GpuV3])
 def test_gpu_matches_torch_sdpa(cls):
     _check(cls, atol=1e-4, rtol=1e-3)  # assignment spec: within 1e-4
