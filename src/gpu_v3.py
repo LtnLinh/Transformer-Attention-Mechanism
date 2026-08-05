@@ -20,6 +20,7 @@ _M_INIT = float32(-math.inf)
 def _flash_kernel(D):
     """Build the FlashAttention-1 forward kernel for a fixed model width D —
     numba wants compile-time-constant shared/local array shapes."""
+    assert D % TILE == 0, "flash kernel assumes d_model is a multiple of 16"
     CH = D // TILE  # output columns owned by each thread (cols tx, tx+16, ...)
     D_P = D + 1     # padded Q row: plain name, same shared.array constraint
 

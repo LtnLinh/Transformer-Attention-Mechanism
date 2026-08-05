@@ -227,6 +227,37 @@ def attention_bytes(model, n):
     return 4 * probe.numel() * probe.element_size()  # Q, K, V in + out out
 
 
+def _peak_extra_bytes(call):
+    """Torch-allocator high-water mark (bytes) over `call`, beyond what is
+    already allocated. None on OOM — the honest datapoint at the top of the
+    footprint sweep."""
+    torch.cuda.synchronize()
+    torch.cuda.reset_peak_memory_stats()
+    base = torch.cuda.memory_allocated()
+    try:
+        with torch.no_grad():
+            call()
+        torch.cuda.synchronize()
+        return torch.cuda.max_memory_allocated() - base
+    except torch.OutOfMemoryError:
+        torch.cuda.empty_cache()
+        return None
+
+
+def attention_peak_extra_bytes(model, n):
+    """Peak extra GPU memory of one attention pass beyond its q/k/v inputs:
+    the N x N intermediates for the unfused versions, ~the [N, D] output for
+    the fused ones."""
+    q, k, v = (t[0].detach().contiguous().cuda() for t in _qkv(model, n))
+    return _peak_extra_bytes(lambda: model._attend(q, k, v))
+
+
+def sdpa_peak_extra_bytes(model, n):
+    """Same high-water-mark contract for torch SDPA."""
+    q, k, v = (t.detach().cuda() for t in _qkv(model, n))
+    return _peak_extra_bytes(lambda: F.scaled_dot_product_attention(q, k, v))
+
+
 def roofline(model, seq_lens, kernel_ms, specs=None):
     """Operating points for a roofline: achieved TFLOP/s and arithmetic
     intensity (FLOP/byte) per version per N, from library FLOPs / bytes and
