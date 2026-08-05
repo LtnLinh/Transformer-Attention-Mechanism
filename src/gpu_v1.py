@@ -7,8 +7,10 @@ from gpu_base import GpuPipeline
 
 
 @cuda.jit
-def _matmul(a, b, out):
-    """out = a @ b — one thread per output element, all reads from global memory.
+def _matmul(a, b, scale, out):
+    """out = scale * (a @ b) — one thread per output element, all reads from
+    global memory. The scale rides the epilogue for free: a separate scaling
+    launch would re-read and re-write the whole output matrix.
 
     threadIdx.x walks the output column (the contiguous axis) so warp reads
     of b are coalesced; a[i, kk] is a broadcast within the warp.
@@ -18,14 +20,7 @@ def _matmul(a, b, out):
         acc = float32(0.)
         for kk in range(a.shape[1]):
             acc += a[i, kk] * b[kk, j]
-        out[i, j] = acc
-
-
-@cuda.jit
-def _scale(x, num):
-    j, i = cuda.grid(2)
-    if i < x.shape[0] and j < x.shape[1]:
-        x[i, j] /= num
+        out[i, j] = acc * scale
 
 
 TPB = 256  # threads cooperating on one row
@@ -87,23 +82,23 @@ def _grid2d(rows, cols, tpb=(16, 16)):
 
 
 class GpuV1(GpuPipeline):
-    """V1 — naive three-kernel attention: QK^T matmul, softmax, weighted sum.
+    """V1 — naive three-launch attention: scaled QK^T matmul, softmax,
+    weighted sum.
 
     Every intermediate, including the full N x N score matrix, round-trips
     through global memory between kernels, and the softmax reads each row
-    three times with one thread per row.
+    three times.
     """
 
     def _step_qkt(self, q, k, scores):
         N, D = q.shape
         bpg, tpb = _grid2d(N, N)
-        _matmul[bpg, tpb](q, k.t().contiguous(), scores)
         # np.float32 keeps the kernel arithmetic in fp32 (a python float is typed float64)
-        _scale[bpg, tpb](scores, np.float32(D ** 0.5))
+        _matmul[bpg, tpb](q, k.t().contiguous(), np.float32(D ** -0.5), scores)
 
     def _step_softmax(self, scores, weights):
         _softmax[scores.shape[0], TPB](scores, weights)
 
     def _step_weighted_sum(self, weights, v, out):
         bpg, tpb = _grid2d(*out.shape)
-        _matmul[bpg, tpb](weights, v, out)
+        _matmul[bpg, tpb](weights, v, np.float32(1.0), out)
