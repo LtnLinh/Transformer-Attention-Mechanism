@@ -2,129 +2,153 @@
  "v1": [
   {
    "n": 64,
-   "dram_bytes": 1028640,
-   "kernel_ms": 0.216864
+   "dram_bytes": 1049792,
+   "kernel_ms": 0.214112,
+   "flops": 8581056
   },
   {
    "n": 128,
-   "dram_bytes": 2231264,
-   "kernel_ms": 0.37804800000000005
+   "dram_bytes": 2250304,
+   "kernel_ms": 0.375936,
+   "flops": 34291584
   },
   {
    "n": 256,
-   "dram_bytes": 5421696,
-   "kernel_ms": 1.245728
+   "dram_bytes": 5492064,
+   "kernel_ms": 1.2457919999999998,
+   "flops": 137101056
   },
   {
    "n": 512,
-   "dram_bytes": 13407040,
-   "kernel_ms": 4.609824
+   "dram_bytes": 15387296,
+   "kernel_ms": 4.61024,
+   "flops": 548273664
   },
   {
    "n": 1024,
-   "dram_bytes": 47487392,
-   "kernel_ms": 18.072319999999998
+   "dram_bytes": 54580352,
+   "kernel_ms": 18.074848,
+   "flops": 2192833536
   },
   {
    "n": 2048,
-   "dram_bytes": 1185215840,
-   "kernel_ms": 71.40976
+   "dram_bytes": 1190789056,
+   "kernel_ms": 71.417056,
+   "flops": 8770811904
   }
  ],
  "v2": [
   {
    "n": 64,
-   "dram_bytes": 811136,
-   "kernel_ms": 0.09519999999999999
+   "dram_bytes": 834048,
+   "kernel_ms": 0.09500799999999998,
+   "flops": 8682688
   },
   {
    "n": 128,
-   "dram_bytes": 1707424,
-   "kernel_ms": 0.17865599999999998
+   "dram_bytes": 1740448,
+   "kernel_ms": 0.177696,
+   "flops": 34519424
   },
   {
    "n": 256,
-   "dram_bytes": 3942048,
-   "kernel_ms": 0.542624
+   "dram_bytes": 4016480,
+   "kernel_ms": 0.5420799999999999,
+   "flops": 137458480
   },
   {
    "n": 512,
-   "dram_bytes": 9607808,
-   "kernel_ms": 1.9917439999999997
+   "dram_bytes": 10738336,
+   "kernel_ms": 1.991008,
+   "flops": 548269508
   },
   {
    "n": 1024,
-   "dram_bytes": 34592960,
-   "kernel_ms": 7.781184
+   "dram_bytes": 38285408,
+   "kernel_ms": 7.7827839999999995,
+   "flops": 2189089552
   },
   {
    "n": 2048,
-   "dram_bytes": 1032880736,
-   "kernel_ms": 30.882399999999997
+   "dram_bytes": 1042199040,
+   "kernel_ms": 30.890112,
+   "flops": 8746526996
   }
  ],
  "v3": [
   {
    "n": 64,
-   "dram_bytes": 773568,
-   "kernel_ms": 0.542176
+   "dram_bytes": 779648,
+   "kernel_ms": 0.541152,
+   "flops": 9080832
   },
   {
    "n": 128,
-   "dram_bytes": 1519136,
-   "kernel_ms": 1.065472
+   "dram_bytes": 1526592,
+   "kernel_ms": 1.065184,
+   "flops": 36323328
   },
   {
    "n": 256,
-   "dram_bytes": 3156960,
-   "kernel_ms": 2.10816
+   "dram_bytes": 3132160,
+   "kernel_ms": 2.105056,
+   "flops": 145293312
   },
   {
    "n": 512,
-   "dram_bytes": 6178368,
-   "kernel_ms": 4.181632
+   "dram_bytes": 6908576,
+   "kernel_ms": 4.1869439999999996,
+   "flops": 581173248
   },
   {
    "n": 1024,
-   "dram_bytes": 21967584,
-   "kernel_ms": 16.746496
+   "dram_bytes": 23034848,
+   "kernel_ms": 16.782111999999998,
+   "flops": 2324692992
   },
   {
    "n": 2048,
-   "dram_bytes": 78711776,
-   "kernel_ms": 66.928608
+   "dram_bytes": 79678496,
+   "kernel_ms": 66.91904,
+   "flops": 9298771968
   }
  ],
  "sdpa": [
   {
    "n": 64,
-   "dram_bytes": 1222304,
-   "kernel_ms": 0.07555199999999998
+   "dram_bytes": 1220992,
+   "kernel_ms": 0.07552,
+   "flops": 9050112
   },
   {
    "n": 128,
-   "dram_bytes": 2856992,
-   "kernel_ms": 0.09504
+   "dram_bytes": 2942400,
+   "kernel_ms": 0.095488,
+   "flops": 34803712
   },
   {
    "n": 256,
-   "dram_bytes": 6823072,
-   "kernel_ms": 0.159648
+   "dram_bytes": 7195552,
+   "kernel_ms": 0.159296,
+   "flops": 137076736
   },
   {
    "n": 512,
-   "dram_bytes": 14350496,
-   "kernel_ms": 0.350496
+   "dram_bytes": 15915744,
+   "kernel_ms": 0.35209599999999996,
+   "flops": 543768576
   },
   {
    "n": 1024,
-   "dram_bytes": 68310624,
-   "kernel_ms": 1.036768
+   "dram_bytes": 76753120,
+   "kernel_ms": 1.0503040000000001,
+   "flops": 2199552000
   },
   {
    "n": 2048,
-   "dram_bytes": 261720640,
-   "kernel_ms": 3.67968
+   "dram_bytes": 272377152,
+   "kernel_ms": 3.7129919999999994,
+   "flops": 8699314176
   }
  ]
 }

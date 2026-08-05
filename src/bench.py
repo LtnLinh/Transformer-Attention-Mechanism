@@ -258,24 +258,6 @@ def sdpa_peak_extra_bytes(model, n):
     return _peak_extra_bytes(lambda: F.scaled_dot_product_attention(q, k, v))
 
 
-def roofline(model, seq_lens, kernel_ms, specs=None):
-    """Operating points for a roofline: achieved TFLOP/s and arithmetic
-    intensity (FLOP/byte) per version per N, from library FLOPs / bytes and
-    the already-measured kernel-only times. `kernel_ms` is the ktimes dict
-    (version -> [ms per n]). Also returns achieved GB/s and % of peak."""
-    specs = specs or gpu_specs()
-    pts = {}
-    for name, ms_list in kernel_ms.items():
-        rows = []
-        for n, ms in zip(seq_lens, ms_list):
-            f, b, t = attention_flops(model, n), attention_bytes(model, n), ms / 1e3
-            tflops = f / t / 1e12
-            rows.append({"n": n, "ai": f / b, "tflops": tflops, "gbs": b / t / 1e9,
-                         "pct_peak": 100.0 * tflops / specs["tflops"]})
-        pts[name] = rows
-    return pts, specs
-
-
 def bench_attention(classes, seq_lens, reps=5):
     """Attention-step time for each pipeline class at each sequence length."""
     times = {name: [] for name in classes}
