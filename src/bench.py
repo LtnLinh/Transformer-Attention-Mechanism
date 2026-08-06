@@ -89,20 +89,6 @@ def attention_ms(model, n, reps=5, warmup=True):
     return (time.perf_counter() - t0) / reps * 1e3
 
 
-def sdpa_gpu_ms(model, n, reps=5):
-    """torch SDPA on GPU, same contract as `attention_ms`: CPU tensors in,
-    CPU result out, with both transfers inside the timed region."""
-    q, k, v = _qkv(model, n)
-    with torch.no_grad():
-        F.scaled_dot_product_attention(q.cuda(), k.cuda(), v.cuda()).cpu()  # warmup
-        torch.cuda.synchronize()
-        t0 = time.perf_counter()
-        for _ in range(reps):
-            F.scaled_dot_product_attention(q.cuda(), k.cuda(), v.cuda()).cpu()
-        torch.cuda.synchronize()
-    return (time.perf_counter() - t0) / reps * 1e3
-
-
 def gpu_specs():
     """Peak fp32 TFLOP/s and memory bandwidth, HW02 roofline style: device
     query for SMs/cc, pynvml for clocks, known-family tables for bus width
@@ -178,22 +164,6 @@ def attention_kernel_step_ms(model, n, reps=5):
     return times
 
 
-def sdpa_kernel_ms(model, n, reps=5):
-    """Device-resident torch SDPA time via CUDA events."""
-    q, k, v = (t.detach().cuda() for t in _qkv(model, n))
-    with torch.no_grad():
-        F.scaled_dot_product_attention(q, k, v)  # warmup
-        torch.cuda.synchronize()
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
-        for _ in range(reps):
-            F.scaled_dot_product_attention(q, k, v)
-        end.record()
-        torch.cuda.synchronize()
-    return start.elapsed_time(end) / reps
-
-
 def attention_flops(model, n):
     """FLOP count of one [N, D] attention, from torch's own flop_counter
     (torch.utils.flop_counter) — the per-matmul formula is torch's, not a
@@ -249,12 +219,6 @@ def attention_peak_extra_bytes(model, n):
     the fused ones."""
     q, k, v = (t[0].detach().contiguous().cuda() for t in _qkv(model, n))
     return _peak_extra_bytes(lambda: model._attend(q, k, v))
-
-
-def sdpa_peak_extra_bytes(model, n):
-    """Same high-water-mark contract for torch SDPA."""
-    q, k, v = (t.detach().cuda() for t in _qkv(model, n))
-    return _peak_extra_bytes(lambda: F.scaled_dot_product_attention(q, k, v))
 
 
 def bench_attention(classes, seq_lens, reps=5):
