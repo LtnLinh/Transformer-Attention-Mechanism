@@ -3,7 +3,7 @@ import torch
 from numba import cuda
 
 from bench import sdpa_reference
-from cpu_baseline import CpuPipeline
+from cpu_baseline import CpuPipeline, TorchPipeline
 from gpu_v1 import GpuV1
 from gpu_v2 import GpuV2
 from gpu_v3 import GpuV3

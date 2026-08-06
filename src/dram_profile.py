@@ -33,7 +33,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SEQ_LENS = [2 ** x for x in range(6, 15)]
+SEQ_LENS = [2 ** x for x in range(6, 16)]  # to 32768: the last N before V1/V2 OOM
 VERSIONS = ("v1", "v2", "v3")
 METRICS = ",".join([
     "dram__bytes.sum",
