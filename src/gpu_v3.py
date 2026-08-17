@@ -17,22 +17,30 @@ _M_INIT = float32(-math.inf)
 
 
 @lru_cache(maxsize=None)
-def _flash_kernel(D):
+def _flash_kernel(D, q_rows=TILE):
     """Build the FlashAttention-1 forward kernel for a fixed model width D —
-    numba wants compile-time-constant shared/local array shapes."""
+    numba wants compile-time-constant shared/local array shapes.
+
+    q_rows is the resident-Q-tile height (default 16 = one query row per
+    thread row). The block's shared-memory footprint is dominated by that
+    tile (q_rows x (D+1) floats), so shrinking q_rows lets more blocks
+    co-reside per SM — the occupancy experiment — at the cost of sweeping
+    every K/V tile once per 16/q_rows times as many blocks."""
     assert D % TILE == 0, "flash kernel assumes d_model is a multiple of 16"
+    assert TILE % q_rows == 0, "q_rows must divide the 16-wide K tile"
     CH = D // TILE  # output columns owned by each thread (cols tx, tx+16, ...)
     D_P = D + 1     # padded Q row: plain name, same shared.array constraint
+    QR = q_rows
 
     @cuda.jit
     def flash(q, k, v, scale, out):
-        tx = cuda.threadIdx.x          # key column within the tile
-        ty = cuda.threadIdx.y          # query row within the tile
-        base = cuda.blockIdx.x * TILE  # first query row of this block
+        tx = cuda.threadIdx.x        # key column within the tile
+        ty = cuda.threadIdx.y        # query row within the tile (0 .. QR-1)
+        base = cuda.blockIdx.x * QR  # first query row of this block
         N = q.shape[0]
 
-        qs = cuda.shared.array((TILE, D_P), float32)    # resident Q tile
-        ps = cuda.shared.array((TILE, TILE_P), float32)  # S, then P~ = exp(S - m~)
+        qs = cuda.shared.array((QR, D_P), float32)      # resident Q tile
+        ps = cuda.shared.array((QR, TILE_P), float32)   # S, then P~ = exp(S - m~)
         ks = cuda.shared.array((TILE, TILE_P), float32)  # K d-chunk (V2's idiom)
         vs = cuda.shared.array((TILE, TILE_P), float32)  # V column-chunk
 
@@ -54,8 +62,9 @@ def _flash_kernel(D):
             # 16-wide d-chunks in shared memory, exactly V2's tiling idiom
             s = float32(0.)
             for dt in range(0, D, TILE):
-                ks[ty, tx] = k[jt + ty, dt + tx] if jt + ty < N else float32(0.)
-                cuda.syncthreads()
+                for r in range(ty, TILE, QR):  # QR < 16: each thread row
+                    ks[r, tx] = k[jt + r, dt + tx] if jt + r < N else float32(0.)
+                cuda.syncthreads()             # stages 16/QR K rows
                 for j in range(TILE):
                     s += qs[ty, dt + j] * ks[tx, j]
                 cuda.syncthreads()
@@ -93,7 +102,8 @@ def _flash_kernel(D):
             # acc = scale_old * acc + scale_new * (P~ @ V_tile); V staged one
             # 16-column chunk at a time, same idiom
             for c in range(CH):
-                vs[ty, tx] = v[jt + ty, c * TILE + tx] if jt + ty < N else float32(0.)
+                for r in range(ty, TILE, QR):
+                    vs[r, tx] = v[jt + r, c * TILE + tx] if jt + r < N else float32(0.)
                 cuda.syncthreads()
                 pv = float32(0.)
                 for j in range(TILE):
@@ -125,14 +135,22 @@ class GpuV3(GpuPipeline):
     it always holds the exact softmax-weighted sum of every key seen so far.
     Extra footprint is one [N, D] output — O(N) — and Q/K/V are each read
     once per Q-block sweep.
+
+    q_rows shrinks the resident Q tile (and with it the block's shared
+    memory) so more blocks fit per SM — on the T4 the default 16-row tile
+    (~35 KB with the staging tiles) allows only ONE resident block per SM,
+    so every barrier stalls the whole SM. Smaller tiles trade K/V re-reads
+    (x 16/q_rows) for that occupancy.
     """
+
+    q_rows = TILE  # resident-Q-tile height; override for the footprint exp
 
     def _attend(self, q, k, v):
         N, D = q.shape
         out = torch.empty((N, D), device=q.device)
-        kernel = _flash_kernel(D)
+        kernel = _flash_kernel(D, self.q_rows)
         # np.float32 keeps the kernel arithmetic in fp32: a python float
         # scale is typed float64 and would silently promote the hot loops
-        kernel[math.ceil(N / TILE), (TILE, TILE)](
+        kernel[math.ceil(N / self.q_rows), (TILE, self.q_rows)](
             q, k, v, np.float32(1.0 / D ** 0.5), out)
         return out
