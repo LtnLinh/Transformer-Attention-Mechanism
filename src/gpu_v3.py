@@ -7,146 +7,132 @@ from numba import cuda, float32
 
 from gpu_base import GpuPipeline
 
-# The paper's M (Algorithm 1, line 1): on-chip SRAM size. The T4 has 64 KB
-# of shared memory per SM = 16384 fp32 elements.
-M_FLOATS = 16384
-W = 32  # column workers per block row: one warp strides the d axis
+TILE = 16      # tile edge: 16 query rows x 16 key columns per block
+TILE_P = 17    # padded row width for the score tile (dodges bank conflicts)
 
 # finite stand-in for -inf on masked keys: exp() of it is 0 and it dodges the
-# (-inf) - (-inf) = nan trap
+# (-inf) - (-inf) = nan trap when a tile holds no real keys
 _NEG_BIG = float32(-3.0e38)
+_M_INIT = float32(-math.inf)
 
 
 @lru_cache(maxsize=None)
-def _fa1_kernel(D):
-    """Build Algorithm 1's inner body (lines 6-13) for one (i, j) block pair.
-
-    This kernel is deliberately a line-by-line transcription of the paper —
-    explainability over speed. One thread computes one score element; the
-    row max and sum are plain shared-memory scans; there is no register
-    micro-tiling, no warp shuffling, no prefetching. The known costs of
-    that choice on a T4 (idle lanes in the score phase, bank conflicts on
-    the K reads, per-launch dispatch for the outer loop) are accepted.
-    """
-    # Line 1: Bc = ceil(M / 4d), Br = min(ceil(M / 4d), d). The budget means
-    # exactly this: four Bc x d fp32 blocks (Kj, Vj, Qi, Oi) fill the SRAM.
-    BC = max(1, M_FLOATS // (4 * D))  # 4d divides M here, so floor == ceil
-    BR = min(BC, D)
-    # Three of the four blocks live in shared memory below (Qi, Kj, Vj —
-    # exactly the 48 KB a CUDA block may allocate statically); the fourth,
-    # Oi, is "loaded on chip" (line 8) into registers instead, one column
-    # slice per thread, and written back at line 12.
-    assert 3 * BC * D * 4 <= 49152, "Qi, Kj, Vj must fit in static shared"
+def _flash_kernel(D):
+    """Build the FlashAttention-1 forward kernel for a fixed model width D —
+    numba wants compile-time-constant shared/local array shapes."""
+    assert D % TILE == 0, "flash kernel assumes d_model is a multiple of 16"
+    CH = D // TILE  # output columns owned by each thread (cols tx, tx+16, ...)
+    D_P = D + 1     # padded Q row: plain name, same shared.array constraint
 
     @cuda.jit
-    def fa1_inner(q, k, v, o, l, m, j, scale):
-        i = cuda.blockIdx.x   # line 7: the inner loop over i — its
-        #                       iterations touch disjoint rows of O, l, m,
-        #                       so they run as independent thread blocks
-        tx = cuda.threadIdx.x          # column worker within the row
-        ty = cuda.threadIdx.y          # row within the Br-row block
-        row = i * BR + ty              # this row of Q, O, l, m
-        kbase = j * BC                 # first key of block j
+    def flash(q, k, v, scale, out):
+        tx = cuda.threadIdx.x          # key column within the tile
+        ty = cuda.threadIdx.y          # query row within the tile
+        base = cuda.blockIdx.x * TILE  # first query row of this block
         N = q.shape[0]
 
-        qi = cuda.shared.array((BR, D), float32)  # line 8: load Qi
-        kj = cuda.shared.array((BC, D), float32)  # line 6: load Kj
-        vj = cuda.shared.array((BC, D), float32)  # line 6: load Vj
+        qs = cuda.shared.array((TILE, D_P), float32)    # resident Q tile
+        ps = cuda.shared.array((TILE, TILE_P), float32)  # S, then P~ = exp(S - m~)
+        ks = cuda.shared.array((TILE, TILE_P), float32)  # K d-chunk (V2's idiom)
+        vs = cuda.shared.array((TILE, TILE_P), float32)  # V column-chunk
 
-        for c in range(tx, D, W):
-            qi[ty, c] = q[row, c] if row < N else float32(0.)
-            kj[ty, c] = k[kbase + ty, c] if kbase + ty < N else float32(0.)
-            vj[ty, c] = v[kbase + ty, c] if kbase + ty < N else float32(0.)
+        # Stage the block's Q tile once (each thread strides one row); it
+        # stays on-chip for the whole K/V sweep — the FlashAttention move
+        # that makes Q traffic O(N D) instead of O(N^2 D).
+        for c in range(tx, D, TILE):
+            qs[ty, c] = q[base + ty, c] if base + ty < N else float32(0.)
         cuda.syncthreads()
 
-        # Line 9: S_ij = tau * Qi @ Kj^T — one thread per score element
-        # (threads with tx >= Bc sit this phase out).
-        s = _NEG_BIG
-        if tx < BC:
+        acc = cuda.local.array(CH, float32)  # O[base+ty, tx::TILE] — kept
+        for c in range(CH):                  # normalised after every tile (FA-1)
+            acc[c] = float32(0.)
+        m = _M_INIT      # running row max
+        l = float32(0.)  # running row sum of exponentials
+
+        for jt in range(0, N, TILE):
+            # S[ty, tx] = scale * dot(q[base+ty], k[jt+tx]) — K staged in
+            # 16-wide d-chunks in shared memory, exactly V2's tiling idiom
             s = float32(0.)
-            for kk in range(D):
-                s += qi[ty, kk] * kj[tx, kk]
+            for dt in range(0, D, TILE):
+                ks[ty, tx] = k[jt + ty, dt + tx] if jt + ty < N else float32(0.)
+                cuda.syncthreads()
+                for j in range(TILE):
+                    s += qs[ty, dt + j] * ks[tx, j]
+                cuda.syncthreads()
             s *= scale
-            if kbase + tx >= N:
+            if jt + tx >= N:
                 s = _NEG_BIG  # masked key: exp() contributes exactly 0
-        cuda.syncthreads()  # everyone is done reading Kj...
-        if tx < BC:
-            kj[ty, tx] = s  # ...so its SRAM slot is free: recycle the first
-        cuda.syncthreads()  # Br x Bc entries to hold S_ij, then P~_ij
+            ps[ty, tx] = s
+            cuda.syncthreads()
 
-        # Line 10: m~ = rowmax(S), P~ = exp(S - m~), l~ = rowsum(P~).
-        mt = _NEG_BIG
-        for c in range(BC):
-            if kj[ty, c] > mt:
-                mt = kj[ty, c]
-        cuda.syncthreads()  # all scans done before S is overwritten by P~
-        if tx < BC:
-            kj[ty, tx] = math.exp(s - mt)
-        cuda.syncthreads()
-        lt = float32(0.)
-        for c in range(BC):
-            lt += kj[ty, c]
+            # tile row max: every lane scans its row's 16 scores — redundant
+            # but uniform, so no divergence and no reduction machinery
+            mt = _NEG_BIG
+            for j in range(TILE):
+                if ps[ty, j] > mt:
+                    mt = ps[ty, j]
+            p = math.exp(s - mt)  # P~ uses the *tile* max (FA-1's Algorithm 1)
+            cuda.syncthreads()
+            ps[ty, tx] = p
+            cuda.syncthreads()
+            lt = float32(0.)      # tile row sum, same redundant scan
+            for j in range(TILE):
+                lt += ps[ty, j]
 
-        # Line 8 (rest) + line 11: load m_i, l_i from HBM and merge —
-        # m_new = max(m_i, m~), l_new = e^(m_i-m_new) l_i + e^(m~-m_new) l~.
-        mi = m[row] if row < N else _NEG_BIG
-        li = l[row] if row < N else float32(0.)
-        mn = mt if mt > mi else mi
-        alpha = math.exp(mi - mn)
-        beta = math.exp(mt - mn)
-        ln = li * alpha + lt * beta
+            # FA-1 online-softmax merge: fold the tile's (m~, l~) into the
+            # running (m, l) and rescale AND renormalise the output block this
+            # very tile — no deferral; acc always holds the softmax of
+            # everything seen so far. First tile: exp(-inf - m_new) = 0.
+            mn = mt if mt > m else m
+            alpha = math.exp(m - mn)
+            beta = math.exp(mt - mn)
+            ln = l * alpha + lt * beta
+            scale_old = l * alpha / ln  # rescales the already-normalised acc
+            scale_new = beta / ln       # normalises this tile's P~ V
 
-        if row < N:
-            # Line 12: O_i <- diag(l_new)^-1 (diag(l_i) e^(m_i-m_new) O_i
-            #                                 + e^(m~-m_new) P~_ij Vj),
-            # read-modify-written in HBM, one column slice per thread.
-            for c in range(tx, D, W):
+            # acc = scale_old * acc + scale_new * (P~ @ V_tile); V staged one
+            # 16-column chunk at a time, same idiom
+            for c in range(CH):
+                vs[ty, tx] = v[jt + ty, c * TILE + tx] if jt + ty < N else float32(0.)
+                cuda.syncthreads()
                 pv = float32(0.)
-                for cc in range(BC):
-                    pv += kj[ty, cc] * vj[cc, c]
-                o[row, c] = (li * alpha * o[row, c] + beta * pv) / ln
-            if tx == 0:
-                l[row] = ln  # line 13: write l_i, m_i back to HBM
-                m[row] = mn
+                for j in range(TILE):
+                    pv += ps[ty, j] * vs[j, tx]
+                acc[c] = acc[c] * scale_old + pv * scale_new
+                cuda.syncthreads()
+            m = mn
+            l = ln
 
-    return fa1_inner, BR, BC
+        # acc is already the normalised softmax-weighted sum — write as-is
+        if base + ty < N:
+            for c in range(CH):
+                out[base + ty, c * TILE + tx] = acc[c]
+
+    return flash
 
 
 class GpuV3(GpuPipeline):
-    """V3 — FlashAttention-1 forward, Algorithm 1 of the paper transcribed
-    as literally as the hardware allows, preferring explainability over
-    speed. The host runs lines 2 and 5; the kernel is lines 6-13.
+    """V3 — FlashAttention-1 forward: tiled + online softmax + one fused
+    kernel, and the N x N score matrix never exists in any memory.
 
-    Structure, mapped to the paper: O, l (row exp-sums) and m (row maxes)
-    are initialised in HBM (line 2) and updated there after every (i, j)
-    block pair — nothing accumulates in registers across the sweep. The
-    outer loop over K/V blocks j is a host loop (line 5, one kernel launch
-    per j; same-stream launches serialize, preserving the paper's order);
-    the inner loop over Q blocks i (line 7) becomes the launch grid, since
-    its iterations touch disjoint rows. Block sizes come from line 1's
-    SRAM budget: Bc = Br = M/4d = 8 on the T4's 64 KB. The N x N matrix
-    never exists; the extra footprint is O(N): the output plus the l and m
-    vectors.
-
-    What this costs: with d = 512 and 16K fp32 of SRAM, the paper's own
-    IO bound Theta(N^2 d^2 / M) is no longer small — O is re-read and
-    re-written once per K/V block — so this V3 spends bandwidth to hold
-    its O(N) footprint, and V2 outruns it at large N. The fast variant
-    (register micro-tile, one merge per 64-key sweep, ~1.7x) lives in the
-    repo history; this version keeps the paper on the page."""
+    One thread block per 16 query rows: the Q tile is staged in shared memory
+    once and stays resident while the block sweeps the K/V tiles; K and V are
+    staged 16-wide chunk by chunk with the same shared-memory idiom V2 uses —
+    no prefetching, no unrolling, no micro-tiles. Per 16x16 tile the block
+    computes the score tile, takes its row max and sum, and applies
+    Algorithm 1's update: the running (max, sum) statistics merge with the
+    tile's and the output block is rescaled and renormalised immediately, so
+    it always holds the exact softmax-weighted sum of every key seen so far.
+    Extra footprint is one [N, D] output — O(N) — and Q/K/V are each read
+    once per Q-block sweep.
+    """
 
     def _attend(self, q, k, v):
         N, D = q.shape
-        kernel, BR, BC = _fa1_kernel(D)
-        # Line 2: O = 0, l = 0, m = -inf, all in HBM.
-        out = torch.zeros((N, D), device=q.device)
-        l = torch.zeros(N, device=q.device)
-        m = torch.full((N,), -math.inf, device=q.device)
-        Tr = math.ceil(N / BR)
-        Tc = math.ceil(N / BC)
+        out = torch.empty((N, D), device=q.device)
+        kernel = _flash_kernel(D)
         # np.float32 keeps the kernel arithmetic in fp32: a python float
         # scale is typed float64 and would silently promote the hot loops
-        tau = np.float32(1.0 / D ** 0.5)
-        for j in range(Tc):  # line 5: the outer loop over K/V blocks
-            kernel[Tr, (W, BR)](q, k, v, out, l, m, j, tau)
+        kernel[math.ceil(N / TILE), (TILE, TILE)](
+            q, k, v, np.float32(1.0 / D ** 0.5), out)
         return out
