@@ -2,187 +2,187 @@
  "v1": [
   {
    "n": 64,
-   "dram_bytes": 995840,
-   "kernel_ms": 0.21235199999999999,
-   "flops": 8576960
+   "dram_bytes": 315680,
+   "kernel_ms": 0.075232,
+   "flops": 2260928
   },
   {
    "n": 128,
-   "dram_bytes": 2165184,
-   "kernel_ms": 0.37055999999999994,
-   "flops": 34209664
+   "dram_bytes": 671232,
+   "kernel_ms": 0.11456,
+   "flops": 8994688
   },
   {
    "n": 256,
-   "dram_bytes": 5149312,
-   "kernel_ms": 1.239424,
-   "flops": 136642304
+   "dram_bytes": 1902240,
+   "kernel_ms": 0.371776,
+   "flops": 35880704
   },
   {
    "n": 512,
-   "dram_bytes": 13409888,
-   "kernel_ms": 4.595967999999999,
-   "flops": 546176512
+   "dram_bytes": 6362848,
+   "kernel_ms": 1.25472,
+   "flops": 143326720
   },
   {
    "n": 1024,
-   "dram_bytes": 44667264,
-   "kernel_ms": 18.028736000000002,
-   "flops": 2183920640
+   "dram_bytes": 27745888,
+   "kernel_ms": 4.655647999999999,
+   "flops": 572914688
   },
   {
    "n": 2048,
-   "dram_bytes": 1154626400,
-   "kernel_ms": 71.246048,
-   "flops": 8734111744
+   "dram_bytes": 105503808,
+   "kernel_ms": 18.312863999999998,
+   "flops": 2290874368
   },
   {
    "n": 4096,
-   "dram_bytes": 8174034336,
-   "kernel_ms": 283.631232,
-   "flops": 34933305344
+   "dram_bytes": 427982304,
+   "kernel_ms": 72.786464,
+   "flops": 9161928704
   },
   {
    "n": 8192,
-   "dram_bytes": 33345201408,
-   "kernel_ms": 1133.511072,
-   "flops": 139726938112
+   "dram_bytes": 6533843104,
+   "kernel_ms": 289.845536,
+   "flops": 36644577280
   },
   {
    "n": 16384,
-   "dram_bytes": 137583632800,
-   "kernel_ms": 4531.887903999999,
-   "flops": 558895185920
+   "dram_bytes": 29218449952,
+   "kernel_ms": 1156.434464,
+   "flops": 146572034048
   },
   {
    "n": 32768,
-   "dram_bytes": 1582854001856,
-   "kernel_ms": 18112.942464,
-   "flops": 2235555610624
+   "dram_bytes": 118238947968,
+   "kernel_ms": 4624.236384,
+   "flops": 586275586048
   }
  ],
  "v2": [
   {
    "n": 64,
-   "dram_bytes": 812960,
-   "kernel_ms": 0.094912,
-   "flops": 8682688
+   "dram_bytes": 242336,
+   "kernel_ms": 0.0384,
+   "flops": 2391232
   },
   {
    "n": 128,
-   "dram_bytes": 1755456,
-   "kernel_ms": 0.17820799999999998,
-   "flops": 34519424
+   "dram_bytes": 547872,
+   "kernel_ms": 0.063744,
+   "flops": 9353600
   },
   {
    "n": 256,
-   "dram_bytes": 4013184,
-   "kernel_ms": 0.542656,
-   "flops": 137456812
+   "dram_bytes": 1601184,
+   "kernel_ms": 0.172,
+   "flops": 36796144
   },
   {
    "n": 512,
-   "dram_bytes": 10645088,
-   "kernel_ms": 1.9908479999999997,
-   "flops": 548264564
+   "dram_bytes": 5611328,
+   "kernel_ms": 0.556928,
+   "flops": 145618844
   },
   {
    "n": 1024,
-   "dram_bytes": 38345696,
-   "kernel_ms": 7.78144,
-   "flops": 2189099524
+   "dram_bytes": 26299456,
+   "kernel_ms": 2.046528,
+   "flops": 578487328
   },
   {
    "n": 2048,
-   "dram_bytes": 1038482304,
-   "kernel_ms": 30.890079999999998,
-   "flops": 8746539776
+   "dram_bytes": 114348736,
+   "kernel_ms": 8.01632,
+   "flops": 2304085232
   },
   {
    "n": 4096,
-   "dram_bytes": 8057948480,
-   "kernel_ms": 123.29324799999999,
-   "flops": 34962392764
+   "dram_bytes": 492855712,
+   "kernel_ms": 31.8184,
+   "flops": 9192637684
   },
   {
    "n": 8192,
-   "dram_bytes": 32118658240,
-   "kernel_ms": 492.70732799999996,
-   "flops": 139793505188
+   "dram_bytes": 5599520416,
+   "kernel_ms": 126.772384,
+   "flops": 36714201824
   },
   {
    "n": 16384,
-   "dram_bytes": 128266434432,
-   "kernel_ms": 1970.4105279999999,
-   "flops": 559044910888
+   "dram_bytes": 25547143136,
+   "kernel_ms": 505.525344,
+   "flops": 146727969532
   },
   {
    "n": 32768,
-   "dram_bytes": 512102932576,
-   "kernel_ms": 7881.08864,
-   "flops": 2235887256464
+   "dram_bytes": 105696236480,
+   "kernel_ms": 2020.2201599999999,
+   "flops": 586618495088
   }
  ],
  "v3": [
   {
    "n": 64,
-   "dram_bytes": 772768,
-   "kernel_ms": 0.541184,
-   "flops": 9080832
+   "dram_bytes": 192128,
+   "kernel_ms": 0.089568,
+   "flops": 2494464
   },
   {
    "n": 128,
-   "dram_bytes": 1528960,
-   "kernel_ms": 1.0655999999999999,
-   "flops": 36323328
+   "dram_bytes": 376864,
+   "kernel_ms": 0.16841599999999998,
+   "flops": 9977856
   },
   {
    "n": 256,
-   "dram_bytes": 3098528,
-   "kernel_ms": 2.10688,
-   "flops": 145293312
+   "dram_bytes": 686240,
+   "kernel_ms": 0.326016,
+   "flops": 39911424
   },
   {
    "n": 512,
-   "dram_bytes": 6858112,
-   "kernel_ms": 4.186688,
-   "flops": 581173248
+   "dram_bytes": 1325600,
+   "kernel_ms": 0.644928,
+   "flops": 159645696
   },
   {
    "n": 1024,
-   "dram_bytes": 23032864,
-   "kernel_ms": 16.772448,
-   "flops": 2324692992
+   "dram_bytes": 2702976,
+   "kernel_ms": 2.193024,
+   "flops": 638582784
   },
   {
    "n": 2048,
-   "dram_bytes": 80260288,
-   "kernel_ms": 66.968608,
-   "flops": 9298771968
+   "dram_bytes": 6378080,
+   "kernel_ms": 8.535359999999999,
+   "flops": 2554331136
   },
   {
    "n": 4096,
-   "dram_bytes": 258571808,
-   "kernel_ms": 234.156512,
-   "flops": 37195087872
+   "dram_bytes": 41633376,
+   "kernel_ms": 29.498656,
+   "flops": 10217324544
   },
   {
    "n": 8192,
-   "dram_bytes": 917667680,
-   "kernel_ms": 869.8391039999999,
-   "flops": 148780351488
+   "dram_bytes": 201476352,
+   "kernel_ms": 108.84464,
+   "flops": 40869298176
   },
   {
    "n": 16384,
-   "dram_bytes": 3580210944,
-   "kernel_ms": 3478.147424,
-   "flops": 595121405952
+   "dram_bytes": 793102272,
+   "kernel_ms": 432.857504,
+   "flops": 163477192704
   },
   {
    "n": 32768,
-   "dram_bytes": 14153660384,
-   "kernel_ms": 13912.305951999999,
-   "flops": 2380485623808
+   "dram_bytes": 3156239200,
+   "kernel_ms": 1727.624128,
+   "flops": 653908770816
   }
  ]
 }

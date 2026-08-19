@@ -10,7 +10,7 @@ class TransformerBase(nn.Module):
     CPU; subclasses only swap out the attention step (the profiled bottleneck).
     """
 
-    def __init__(self, vocab_size=1000, d_model=512, n_heads=4, d_ff=512 * 4):
+    def __init__(self, vocab_size=1000, d_model=128, n_heads=4, d_ff=128 * 4):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.n_heads = n_heads
